@@ -2,18 +2,16 @@ import os
 import json
 import traceback
 
-import openai
 from loguru import logger
 from chalice import Chalice
 from telegram.ext import (
     Dispatcher,
     MessageHandler,
     Filters,
-    CommandHandler,
 )
 from telegram import ParseMode, Update, Bot
-from chalice.app import Rate
 
+from chalicelib.api import search
 from chalicelib.utils import generate_transcription, send_typing_action
 
 # Telegram token
@@ -32,24 +30,10 @@ app.debug = True
 bot = Bot(token=TOKEN)
 dispatcher = Dispatcher(bot, None, use_context=True)
 
+
 #####################
 # Telegram Handlers #
 #####################
-
-
-def ask_chatgpt(text):
-    message = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {
-                "role": "assistant",
-                "content": text,
-            },
-        ],
-    )
-    logger.info(message)
-    return message["choices"][0]["message"]["content"]
-
 
 @send_typing_action
 def process_voice_message(update, context):
@@ -61,13 +45,15 @@ def process_voice_message(update, context):
     file = bot.get_file(file_id)
     # Download the voice message file
     transcript_msg = generate_transcription(file)
-    message = ask_chatgpt(transcript_msg)
+
+    logger.info(transcript_msg)
+    message = search(transcript_msg)
 
     chat_id = update.message.chat_id
     context.bot.send_message(
         chat_id=chat_id,
         text=message,
-        parse_mode=ParseMode.MARKDOWN,
+        parse_mode=ParseMode.HTML,
     )
 
 
@@ -75,22 +61,22 @@ def process_voice_message(update, context):
 def process_message(update, context):
     chat_id = update.message.chat_id
     chat_text = update.message.text
-
     try:
-        message = ask_chatgpt(chat_text)
+        message = search(chat_text)
+        logger.info(message)
     except Exception as e:
         app.log.error(e)
         app.log.error(traceback.format_exc())
         context.bot.send_message(
             chat_id=chat_id,
-            text="There was an exception handling your message :(",
-            parse_mode=ParseMode.MARKDOWN,
+            text="There was an error trying to answer your message :(",
+            parse_mode=ParseMode.HTML,
         )
     else:
         context.bot.send_message(
             chat_id=chat_id,
             text=message,
-            parse_mode=ParseMode.MARKDOWN,
+            parse_mode=ParseMode.HTML,
         )
 
 
@@ -101,7 +87,6 @@ def process_message(update, context):
 
 @app.lambda_function(name=MESSAGE_HANDLER_LAMBDA)
 def message_handler(event, context):
-
     dispatcher.add_handler(MessageHandler(Filters.text, process_message))
     dispatcher.add_handler(MessageHandler(Filters.voice, process_voice_message))
 

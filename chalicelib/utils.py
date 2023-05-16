@@ -41,8 +41,8 @@ def generate_transcription(file):
     job_name = f"transcription_job_{message_id}"
     transcribe_client.start_transcription_job(
         TranscriptionJobName=job_name,
-        IdentifyLanguage=True,
         MediaFormat="ogg",
+        LanguageCode="ru-RU",
         Media={"MediaFileUri": remote_s3_path},
     )
 

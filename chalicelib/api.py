@@ -4,6 +4,8 @@ import pinecone
 
 from typing import Tuple, List
 from googletrans import Translator
+from loguru import logger
+
 
 # Telegram token
 PINECONE_ENV = os.environ["PINECONE_ENV"]
@@ -38,10 +40,10 @@ def generate_embedding(_text: str) -> Tuple[List[float], int]:
 def _search(query: str, top_k=5):
     processed_query = _google_translate(query, "ru", "en")
 
-    print(f"Embedding model Open AI is used for search")
+    logger.info(f"Embedding model Open AI is used for search")
 
     query_embedding, tokens_count = generate_embedding(processed_query)
-    print(f"Number of tokens to build an embedding for a user query: {tokens_count}")
+    logger.info(f"Number of tokens to build an embedding for a user query: {tokens_count}")
 
     index_name = 'daniel-index'
 
@@ -80,17 +82,13 @@ def _search(query: str, top_k=5):
     return mapped_result
 
 
-def search(message):
+def search(query):
     """
     Handler function for text messages. Performs a search and returns the top 5 results.
     """
-    query = message.text
-
-    print(f"query: {query}")
-
+    logger.info(f"User query: {query}")
     results = _search(query, 5)
-
-    print(f"results: {len(results)}")
+    logger.info(f"Results: {len(results)}")
 
     if len(results) > 0:
         answer = 'Вот {} лучших результатов по вопросу "{}":\n\n'.format(len(results), query)
