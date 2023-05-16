@@ -1,11 +1,13 @@
 {
   "version": "2.0",
-  "app_name": "chatgpt-telegram-bot",
+  "app_name": "daniel-search-bot-serverless",
   "api_gateway_endpoint_type": "REGIONAL",
   "environment_variables": {
     "TELEGRAM_TOKEN": "",
     "OPENAI_API_KEY": "",
-    "VOICE_MESSAGES_BUCKET": ""
+    "VOICE_MESSAGES_BUCKET": "",
+    "PINECONE_API_KEY" : "",
+    "PINECONE_ENV" : ""
   },
   "lambda_timeout": 600,
   "stages": {

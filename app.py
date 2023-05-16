@@ -22,7 +22,7 @@ OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
 # Chalice Lambda app
 
-APP_NAME = "chatgpt-telegram-bot"
+APP_NAME = "daniel-search-bot-serverless"
 MESSAGE_HANDLER_LAMBDA = "message-handler-lambda"
 
 app = Chalice(app_name=APP_NAME)
