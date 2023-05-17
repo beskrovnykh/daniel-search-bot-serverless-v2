@@ -1,12 +1,14 @@
 import uuid
 import os
 import json
+import openai
 from functools import wraps
 
 import boto3
 import wget
 from loguru import logger
 from telegram import ChatAction
+from googletrans import Translator
 
 
 def send_typing_action(func):
@@ -23,7 +25,6 @@ def send_typing_action(func):
 
 
 def generate_transcription(file):
-
     # AWS needed clients
     s3_client = boto3.client("s3")
     transcribe_client = boto3.client("transcribe")
@@ -62,3 +63,14 @@ def generate_transcription(file):
     with open(output_location) as f:
         output = json.load(f)
     return output["results"]["transcripts"][0]["transcript"]
+
+
+def google_translate(text: str, src: str, target: str):
+    translator = Translator()
+    translation = translator.translate(text, src=src, dest=target)
+    return translation.text
+
+
+def generate_embedding(_text: str):
+    response = openai.Embedding.create(model="text-embedding-ada-002", input=_text)
+    return response["data"][0]["embedding"], response["usage"]["total_tokens"]

@@ -1,15 +1,69 @@
 import os
-import openai
 import pinecone
 
-from typing import Tuple, List
-from googletrans import Translator
+from chalicelib.utils import google_translate, generate_embedding
 from loguru import logger
-
 
 # Telegram token
 PINECONE_ENV = os.environ["PINECONE_ENV"]
 PINECONE_API_KEY = os.environ["PINECONE_API_KEY"]
+
+
+class TextSearch:
+    def __init__(self, index):
+        self.index = index
+
+    def search(self, query_embedding, top_k=5):
+        # number of top text to be retrieved from database
+        top_texts_count = 20
+        # assumed to be less than that
+        max_meanings_count = 2000
+        similar_texts = self.index.query(query_embedding, namespace="text", top_k=top_texts_count, include_metadata=True)
+        similar_meanings = self.index.query(query_embedding, namespace="meaning", top_k=max_meanings_count,
+                                            include_metadata=True)
+
+        ordered_texts = self.order_by_joint_relevance(similar_texts, similar_meanings)
+
+        top_texts = {}
+        for text in ordered_texts:
+            video_id = text['id'].split('-')[0]
+            if video_id not in top_texts or text['relevance'] > top_texts[video_id]['relevance']:
+                top_texts[video_id] = text
+
+        return sorted(top_texts.values(), key=lambda x: x['relevance'], reverse=True)[:top_k]
+
+    @staticmethod
+    def _compute_text_score(text, similar_meanings):
+        metadata = text["metadata"]
+        try:
+            meaning_id = metadata["meaning_id"]
+        except KeyError:
+            logger.info(f"KeyError occurred for text with id: {text['id']}")
+        else:
+            for chapter in similar_meanings["matches"]:
+                if chapter['id'] == meaning_id:
+                    return chapter['score']
+
+            return None
+
+    def order_by_joint_relevance(self, texts, meanings):
+        mapped_results = []
+        for text in texts['matches']:
+            text_relevance = text['score']
+            meaning_relevance = self._compute_text_score(text, meanings)
+            if meaning_relevance is not None:
+                mapped_results.append({
+                    'id': text['id'],
+                    'relevance': 0.4 * text_relevance + 0.6 * meaning_relevance,
+                    'text_relevance': text_relevance,
+                    'meaning_relevance': meaning_relevance,
+                    'text': text['metadata']['text'],
+                    'url': f"{text['metadata']['url']}&t={int(text['metadata']['start'])}",
+                    'start': text['metadata']['start'],
+                    'title': text['metadata']['title'],
+                    'published': str(text['metadata']['published'])
+                })
+        return sorted(mapped_results, key=lambda t: t['relevance'], reverse=True)
 
 
 def remove_capslock(text):
@@ -26,75 +80,37 @@ def remove_capslock(text):
     return res
 
 
-def _google_translate(text: str, src: str, target: str):
-    translator = Translator()
-    translation = translator.translate(text, src=src, dest=target)
-    return translation.text
-
-
-def generate_embedding(_text: str) -> Tuple[List[float], int]:
-    response = openai.Embedding.create(model="text-embedding-ada-002", input=_text)
-    return response["data"][0]["embedding"], response["usage"]["total_tokens"]
-
-
-def _search(query: str, top_k=5):
-    processed_query = _google_translate(query, "ru", "en")
+def _search(query, top_k):
+    processed_query = google_translate(query, "ru", "en")
 
     logger.info(f"Embedding model Open AI is used for search")
-
     query_embedding, tokens_count = generate_embedding(processed_query)
     logger.info(f"Number of tokens to build an embedding for a user query: {tokens_count}")
 
-    index_name = 'daniel-index'
-
+    index_name = 'daniel-index-v2'
     # initialize connection to pinecone (get API key at app.pinecone.io)
-    pinecone.init(
-        api_key=PINECONE_API_KEY,
-        environment=PINECONE_ENV)
-
-    # check if index already exists (it shouldn't if this is first time)
-    if index_name not in pinecone.list_indexes():
-        pass
-
+    pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENV)
     # connect to index
     index = pinecone.Index(index_name)
     # view index stats
     index.describe_index_stats()
 
-    res = index.query(query_embedding, top_k=top_k * 2, include_metadata=True)
-    unique_links = set()
-    mapped_result = []
-    for match in res['matches']:
-        if match.metadata['url'] not in unique_links:
-            metadata = match['metadata']
-            unique_links.add(metadata['url'])
-            mapped_result.append({
-                "text": metadata["text"],
-                "video_title": _google_translate(remove_capslock(metadata["title"]), "ru", "en"),
-                "translated_text": _google_translate(metadata["text"], "en", "ru"),
-                "translated_video_title": remove_capslock(metadata["title"]),
-                "youtube_link": metadata["url"],
-                "start": metadata["start"],
-                "relevance": match['score']
-            })
-        if len(mapped_result) >= top_k:
-            break
-    return mapped_result
+    text_search = TextSearch(index)
+    top_results = text_search.search(query_embedding, top_k)
+
+    return top_results
 
 
 def search(query):
-    """
-    Handler function for text messages. Performs a search and returns the top 5 results.
-    """
     logger.info(f"User query: {query}")
     results = _search(query, 5)
     logger.info(f"Results: {len(results)}")
 
     if len(results) > 0:
-        answer = 'Вот {} лучших результатов по вопросу "{}":\n\n'.format(len(results), query)
+        answer = 'Лучшие результаты по вопросу "{}":\n\n'.format(query)
         for count, result in enumerate(results, start=1):
-            answer += '{}) {}\n{}\n\n'.format(count, result['translated_video_title'],
-                                              f'{result["youtube_link"]}&t={int(result["start"])}')
+            answer += '{}) {}\n{}\nРелевантность по тексту: {}\nРелевантность по смыслу: {}\n\n'\
+                .format(count, remove_capslock(result['title']), f'{result["url"]}', result['text_relevance'], result['meaning_relevance'])
     else:
         answer = 'Извините, по вопросу "{}" ничего не найдено.'.format(query)
 
