@@ -57,8 +57,7 @@ def send_waiting_message(context, chat_id):
     waiting_text = get_random_waiting_text()
     context.bot.send_message(
         chat_id=chat_id,
-        text=waiting_text,
-        disable_web_page_preview=True
+        text=waiting_text
     )
 
 
@@ -90,6 +89,7 @@ def process_voice_message(update, context):
         chat_id=chat_id,
         text=message,
         parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True
     )
 
 
