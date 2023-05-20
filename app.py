@@ -13,8 +13,8 @@ from telegram.ext import (
     Filters, CommandHandler,
 )
 from telegram import ParseMode, Update, Bot
-
 from chalicelib.api import search
+from chalicelib.classifier import ContentModerationSchema
 from chalicelib.utils import generate_transcription, send_typing_action
 
 # Telegram token
@@ -61,7 +61,7 @@ def send_waiting_message(context, chat_id):
     )
 
 
-@send_typing_action(send_waiting_message)
+@send_typing_action(block_func=None, pre_func=send_waiting_message)
 def process_voice_message(update, context):
     # Get the voice message from the update object
     voice_message = update.message.voice
@@ -72,30 +72,28 @@ def process_voice_message(update, context):
     # Download the voice message file
     transcript_msg = generate_transcription(file)
 
-    chat_id = update.message.chat_id
-    if is_bad_word(transcript_msg):
+    logger.info(f"Voice transcription: {transcript_msg}")
+    bad_flag = is_bad_word(transcript_msg)
+    if bad_flag:
         bad_word_warning = get_random_bad_word_warning()
         context.bot.send_message(
-            chat_id=chat_id,
+            chat_id=update.message.chat_id,
             text=bad_word_warning['bad_words_response'],
             parse_mode=ParseMode.HTML,
         )
-        return
-
-    logger.info(transcript_msg)
-    message = search(transcript_msg)
-
-    context.bot.send_message(
-        chat_id=chat_id,
-        text=message,
-        parse_mode=ParseMode.HTML,
-        disable_web_page_preview=True
-    )
+    else:
+        run_search(update.message.chat_id, transcript_msg, context)
 
 
 def is_bad_word(text):
-    # TODO: add profanity check
-    return False
+    examples = [
+        {
+            "input": "Попка паука",
+            "output": '{"category": "normal"}',
+        }
+    ]
+    moderation = ContentModerationSchema.from_openai(content=text, examples=examples)
+    return moderation.category != "normal"
 
 
 def get_random_bad_word_warning():
@@ -104,20 +102,25 @@ def get_random_bad_word_warning():
     return random.choice(badwords)
 
 
-@send_typing_action(send_waiting_message)
-def process_message(update, context):
-    chat_id = update.message.chat_id
-    chat_text = update.message.text
-
-    if is_bad_word(chat_text):
+def block_search(update, context):
+    """Moderates message text"""
+    res = is_bad_word(update.message.text)
+    if res:
         bad_word_warning = get_random_bad_word_warning()
         context.bot.send_message(
-            chat_id=chat_id,
+            chat_id=update.message.chat_id,
             text=bad_word_warning['bad_words_response'],
             parse_mode=ParseMode.HTML,
         )
-        return
+    return res
 
+
+@send_typing_action(block_func=block_search, pre_func=send_waiting_message)
+def process_message(update, context):
+    run_search(update.message.chat_id, update.message.text, context)
+
+
+def run_search(chat_id, chat_text, context):
     try:
         message = search(chat_text)
         logger.info(message)
@@ -185,7 +188,7 @@ def message_handler(event, context):
 
 logger.info(f"STAGE: {STAGE}")
 if STAGE == Stage.LOCAL:
-    @app.route('/message_handler', methods=['POST'], content_types=['application/json'])
+    @app.route('/', methods=['POST'], content_types=['application/json'])
     def message_handler_route():
         request = app.current_request
         raw_body = request.raw_body
