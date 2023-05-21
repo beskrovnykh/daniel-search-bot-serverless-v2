@@ -1,8 +1,73 @@
 import logging
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 
 import boto3
 from botocore.exceptions import ClientError
+from dateutil.parser import parse
+
+
+class UserAnalyticsDao:
+    def __init__(self):
+        self.dynamodb = boto3.resource('dynamodb')
+        self.table = self.dynamodb.Table("user_analytics")
+
+    def get_active_users_count(self, days=30):
+        now = datetime.now()
+        cutoff = now - timedelta(days=days)
+
+        response = self.table.scan()  # todo: slow
+
+        active_users_count = 0
+        for item in response['Items']:
+            last_seen = parse(item['last_seen'])
+            if last_seen > cutoff:
+                active_users_count += 1
+
+        return active_users_count
+
+    def get_total_users_count(self):
+        response = self.table.scan()  # todo: slow
+        return len(response['Items'])
+
+    def user_exists(self, user_id):
+        try:
+            response = self.table.get_item(
+                Key={
+                    'user_id': str(user_id)
+                }
+            )
+        except ClientError as e:
+            print(e.response['Error']['Message'])
+        else:
+            return 'Item' in response
+
+    def register_user(self, user_id):
+        now = datetime.now()
+        try:
+            self.table.put_item(
+                Item={
+                    'user_id': str(user_id),
+                    'first_seen': str(now.isoformat()),
+                    'last_seen': str(now.isoformat())
+                }
+            )
+        except ClientError as e:
+            print(e.response['Error']['Message'])
+
+    def update_last_seen(self, user_id):
+        try:
+            self.table.update_item(
+                Key={
+                    'user_id': str(user_id)
+                },
+                UpdateExpression="set last_seen = :t",
+                ExpressionAttributeValues={
+                    ':t': str(datetime.now().isoformat())
+                },
+                ReturnValues="UPDATED_NEW"
+            )
+        except ClientError as e:
+            print(e.response['Error']['Message'])
 
 
 class UserRequestsDao:

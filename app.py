@@ -16,7 +16,7 @@ from telegram.ext import (
 from telegram import ParseMode, Update, Bot
 from chalicelib.api import search
 from chalicelib.classifier import ContentModerationSchema
-from chalicelib.dao import UserRequestsDao
+from chalicelib.dao import UserRequestsDao, UserAnalyticsDao
 from chalicelib.utils import generate_transcription, TypingThread
 
 # Telegram token
@@ -45,6 +45,7 @@ class Stage(Enum):
 STAGE = Stage(os.environ['STAGE'])
 
 user_requests_dao = UserRequestsDao()
+user_analytics_dao = UserAnalyticsDao()
 
 
 #####################
@@ -124,6 +125,8 @@ def process_voice_message(update, context):
     user_id = update.effective_user.id
     chat_id = update.effective_message.chat_id
 
+    user_analytics_dao.update_last_seen(user_id)
+
     block_execution = block_by_request_count(update, context)
     if block_execution:
         return
@@ -139,7 +142,7 @@ def process_voice_message(update, context):
     logger.info(f"Voice transcription: {transcript_msg}")
 
     try:
-        search_result = run_search(update.message.chat_id, transcript_msg, context)
+        search_result = run_search(chat_id, transcript_msg, context)
         if search_result:
             update_result = user_requests_dao.update_user_requests_count(user_id)
             requests_count = update_result['requests_count']
@@ -154,6 +157,8 @@ def process_message(update, context):
     user_id = update.effective_user.id
     chat_id = update.effective_message.chat_id
 
+    user_analytics_dao.update_last_seen(user_id)
+
     block_execution = block_by_request_count(update, context)
     if block_execution:
         return
@@ -162,7 +167,7 @@ def process_message(update, context):
     typing_thread = TypingThread(context, chat_id)
     typing_thread.start()
     try:
-        search_result = run_search(update.message.chat_id, update.message.text, context)
+        search_result = run_search(chat_id, update.message.text, context)
         if search_result:
             update_result = user_requests_dao.update_user_requests_count(user_id)
             requests_count = update_result['requests_count']
@@ -208,6 +213,17 @@ def get_random_greeting():
 
 
 def start_command(update, context):
+    user_id = update.effective_user.id
+
+    if user_analytics_dao.user_exists(user_id):
+        user_analytics_dao.update_last_seen(user_id)
+    else:
+        user_analytics_dao.register_user(user_id)
+
+    greetings(context, update)
+
+
+def greetings(context, update):
     greeting = get_random_greeting()
     context.bot.send_message(
         chat_id=update.message.chat_id,
@@ -217,7 +233,9 @@ def start_command(update, context):
 
 
 def help_command(update, context):
-    start_command(update, context)
+    user_id = update.effective_user.id
+    user_analytics_dao.update_last_seen(user_id)
+    greetings(context, update)
 
 
 ############################
@@ -250,3 +268,19 @@ if STAGE == Stage.LOCAL:
         json_body = json.loads(raw_body)
         response = {"body": json.dumps(json_body)}
         return message_handler(response, None)
+
+
+@app.route('/analytics', methods=['GET'])
+def analytics():
+    query_params = app.current_request.query_params
+    days = 30
+    if query_params is not None and 'days' in query_params:
+        days = int(query_params.get('days'))
+
+    active_users = user_analytics_dao.get_active_users_count(days)
+    total_users = user_analytics_dao.get_total_users_count()
+
+    return {
+        'active_users': active_users,
+        'total_users': total_users
+    }
