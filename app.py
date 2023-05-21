@@ -4,6 +4,8 @@ import traceback
 import random
 
 from enum import Enum
+
+import boto3
 from loguru import logger
 from chalice import Chalice
 
@@ -15,6 +17,7 @@ from telegram.ext import (
 from telegram import ParseMode, Update, Bot
 from chalicelib.api import search
 from chalicelib.classifier import ContentModerationSchema
+from chalicelib.dao import UserRequestsDao
 from chalicelib.utils import generate_transcription, send_typing_action
 
 # Telegram token
@@ -42,6 +45,8 @@ class Stage(Enum):
 
 STAGE = Stage(os.environ['STAGE'])
 
+user_requests_dao = UserRequestsDao()
+
 
 #####################
 # Telegram Handlers #
@@ -61,28 +66,10 @@ def send_waiting_message(context, chat_id):
     )
 
 
-@send_typing_action(block_func=None, pre_func=send_waiting_message)
-def process_voice_message(update, context):
-    # Get the voice message from the update object
-    voice_message = update.message.voice
-    # Get the file ID of the voice message
-    file_id = voice_message.file_id
-    # Use the file ID to get the voice message file from Telegram
-    file = bot.get_file(file_id)
-    # Download the voice message file
-    transcript_msg = generate_transcription(file)
-
-    logger.info(f"Voice transcription: {transcript_msg}")
-    bad_flag = is_bad_word(transcript_msg)
-    if bad_flag:
-        bad_word_warning = get_random_bad_word_warning()
-        context.bot.send_message(
-            chat_id=update.message.chat_id,
-            text=bad_word_warning['bad_words_response'],
-            parse_mode=ParseMode.HTML,
-        )
-    else:
-        run_search(update.message.chat_id, transcript_msg, context)
+def get_random_bad_word_warning():
+    with open('chalicelib/ui/ui_badwords.json', 'r') as f:
+        badwords = json.load(f)
+    return random.choice(badwords)
 
 
 def is_bad_word(text):
@@ -96,13 +83,7 @@ def is_bad_word(text):
     return moderation.category != "normal"
 
 
-def get_random_bad_word_warning():
-    with open('chalicelib/ui/ui_badwords.json', 'r') as f:
-        badwords = json.load(f)
-    return random.choice(badwords)
-
-
-def block_search(update, context):
+def block_by_bad_words(update, context):
     """Moderates message text"""
     res = is_bad_word(update.message.text)
     if res:
@@ -115,9 +96,60 @@ def block_search(update, context):
     return res
 
 
-@send_typing_action(block_func=block_search, pre_func=send_waiting_message)
+def get_random_request_limit_warning():
+    with open('chalicelib/ui/ui_limit_reached.json', 'r') as f:
+        data = json.load(f)
+    return random.choice(data['responses'])
+
+
+def block_by_request_count(update, context):
+    """Moderates user request count"""
+    user_id = update.effective_user.id
+    res = user_requests_dao.get_user_requests_count(user_id) > 10
+    if res:
+        request_limit_warning = get_random_request_limit_warning()
+        context.bot.send_message(
+            chat_id=update.message.chat_id,
+            text=request_limit_warning,
+            parse_mode=ParseMode.HTML,
+        )
+    return res
+
+
+@send_typing_action(block_func=block_by_request_count, pre_func=send_waiting_message)
+def process_voice_message(update, context):
+    # Get the voice message from the update object
+    voice_message = update.message.voice
+    # Get the file ID of the voice message
+    file_id = voice_message.file_id
+    # Use the file ID to get the voice message file from Telegram
+    file = bot.get_file(file_id)
+    # Download the voice message file
+    transcript_msg = generate_transcription(file)
+
+    logger.info(f"Voice transcription: {transcript_msg}")
+    # bad_flag = is_bad_word(transcript_msg)
+    # if bad_flag:
+    #     bad_word_warning = get_random_bad_word_warning()
+    #     context.bot.send_message(
+    #         chat_id=update.message.chat_id,
+    #         text=bad_word_warning['bad_words_response'],
+    #         parse_mode=ParseMode.HTML,
+    #     )
+    # else:
+    run_search(update.message.chat_id, transcript_msg, context)
+
+
+@send_typing_action(block_func=block_by_request_count, pre_func=send_waiting_message)
 def process_message(update, context):
-    run_search(update.message.chat_id, update.message.text, context)
+    user_id = update.effective_user.id
+    search_result = run_search(update.message.chat_id, update.message.text, context)
+    if search_result:
+        update_result = user_requests_dao.update_user_requests_count(user_id)
+        requests_count = update_result['requests_count']
+        logger.info(f"Updated request count for user {user_id}: {requests_count}")
+    else:
+        logger.info(f"Search process was rejected for user {user_id}")
 
 
 def run_search(chat_id, chat_text, context):
@@ -133,6 +165,7 @@ def run_search(chat_id, chat_text, context):
             parse_mode=ParseMode.HTML,
             disable_web_page_preview=True
         )
+        return False
     else:
         context.bot.send_message(
             chat_id=chat_id,
@@ -140,6 +173,7 @@ def run_search(chat_id, chat_text, context):
             parse_mode=ParseMode.HTML,
             disable_web_page_preview=True
         )
+        return True
 
 
 #####################
