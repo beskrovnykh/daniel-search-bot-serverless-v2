@@ -1,7 +1,7 @@
+import logging
 from datetime import date, timedelta
 
 import boto3
-from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
 
 
@@ -11,6 +11,21 @@ class UserRequestsDao:
         self.dynamodb = boto3.resource('dynamodb')
         self.table = self.dynamodb.Table(self.table_name)
 
+    def reset_user_requests_count(self, user_id):
+        try:
+            current_date = date.today()
+            current_date = current_date + timedelta(days=1)  # added for feature testing
+
+            current_date_iso_format = current_date.isoformat()
+
+            self.table.update_item(
+                Key={'user_id': str(user_id)},
+                UpdateExpression='SET requests_count = :count, last_accessed_date = :date',
+                ExpressionAttributeValues={':count': 0, ':date': current_date_iso_format}
+            )
+        except ClientError as e:
+            logging.info(f"Error resetting user requests count: {e.response['Error']['Message']}")
+
     def get_user_requests_count(self, user_id):
         try:
             current_date = date.today()
@@ -18,20 +33,22 @@ class UserRequestsDao:
 
             current_date_iso_format = current_date.isoformat()
 
-            filter_expression = Key('user_id').eq(str(user_id)) & Attr('last_accessed_date').eq(current_date_iso_format)
+            response = self.table.get_item(Key={'user_id': str(user_id)})
+            item = response.get('Item')
 
-            projection_expression = 'requests_count, last_accessed_date'
+            if item:
+                last_accessed_date = item.get('last_accessed_date')
+                if last_accessed_date != current_date_iso_format:
+                    self.reset_user_requests_count(user_id)
 
-            response = self.table.scan(FilterExpression=filter_expression, ProjectionExpression=projection_expression)
+                    response = self.table.get_item(Key={'user_id': str(user_id)})
+                    item = response.get('Item')
 
-            items = response.get('Items', [])
-            if items:
-                request_count = items[0].get('requests_count', 0)
-                return request_count
+                return item.get('requests_count', 0)
             else:
                 return 0
         except ClientError as e:
-            print(f"Error retrieving user requests count: {e.response['Error']['Message']}")
+            logging.info(f"Error retrieving user requests count: {e.response['Error']['Message']}")
             return 0
 
     def update_user_requests_count(self, user_id):
@@ -44,12 +61,11 @@ class UserRequestsDao:
             response = self.table.update_item(
                 Key={'user_id': str(user_id)},
                 UpdateExpression='SET requests_count = if_not_exists(requests_count, :start) + :inc, '
-                                 'last_accessed_date = :date '
-                                 'ADD requests_count_zeroed',
+                                 'last_accessed_date = :date',
                 ExpressionAttributeValues={':inc': 1, ':start': 0, ':date': current_date_iso_format},
                 ReturnValues='ALL_NEW'
             )
             return response.get('Attributes', {})
         except ClientError as e:
-            print(f"Error updating user requests count: {e.response['Error']['Message']}")
+            logging.info(f"Error updating user requests count: {e.response['Error']['Message']}")
             return None

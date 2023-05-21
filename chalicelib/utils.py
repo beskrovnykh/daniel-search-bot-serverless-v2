@@ -32,34 +32,34 @@ class TypingThread(Thread):
         self.done = True
 
 
-def send_typing_action(pre_func=None, block_func=None):
-    """Blocks function execution and sends typing action while processing func command."""
-
-    def decorator(func):
-        @wraps(func)
-        def command_func(update, context, *args, **kwargs):
-            chat_id = update.effective_message.chat_id
-
-            if block_func:
-                block_execution = block_func(update, context)
-                if block_execution:
-                    return None
-
-            if pre_func:
-                pre_func(context, chat_id)
-
-            typing_thread = TypingThread(context, chat_id)
-            typing_thread.start()
-            try:
-                result = func(update, context, *args, **kwargs)
-            finally:
-                typing_thread.stop()
-
-            return result
-
-        return command_func
-
-    return decorator
+# def send_typing_action(pre_func=None, block_func=None):
+#     """Blocks function execution and sends typing action while processing func command."""
+#
+#     def decorator(func):
+#         @wraps(func)
+#         def command_func(update, context, *args, **kwargs):
+#             chat_id = update.effective_message.chat_id
+#
+#             if block_func:
+#                 block_execution = block_func(update, context)
+#                 if block_execution:
+#                     return None
+#
+#             if pre_func:
+#                 pre_func(context, chat_id)
+#
+#             typing_thread = TypingThread(context, chat_id)
+#             typing_thread.start()
+#             try:
+#                 result = func(update, context, *args, **kwargs)
+#             finally:
+#                 typing_thread.stop()
+#
+#             return result
+#
+#         return command_func
+#
+#     return decorator
 
 
 def generate_transcription(file):

@@ -5,7 +5,6 @@ import random
 
 from enum import Enum
 
-import boto3
 from loguru import logger
 from chalice import Chalice
 
@@ -18,7 +17,7 @@ from telegram import ParseMode, Update, Bot
 from chalicelib.api import search
 from chalicelib.classifier import ContentModerationSchema
 from chalicelib.dao import UserRequestsDao
-from chalicelib.utils import generate_transcription, send_typing_action
+from chalicelib.utils import generate_transcription, TypingThread
 
 # Telegram token
 TOKEN = os.environ["TELEGRAM_TOKEN"]
@@ -105,7 +104,12 @@ def get_random_request_limit_warning():
 def block_by_request_count(update, context):
     """Moderates user request count"""
     user_id = update.effective_user.id
-    res = user_requests_dao.get_user_requests_count(user_id) > 10
+    requests_count = user_requests_dao.get_user_requests_count(user_id)
+
+    no_limits_ids = [435461305]
+    max_request_count = 999 if user_id in no_limits_ids else 10
+
+    res = requests_count >= max_request_count
     if res:
         request_limit_warning = get_random_request_limit_warning()
         context.bot.send_message(
@@ -116,40 +120,57 @@ def block_by_request_count(update, context):
     return res
 
 
-@send_typing_action(block_func=block_by_request_count, pre_func=send_waiting_message)
 def process_voice_message(update, context):
-    # Get the voice message from the update object
-    voice_message = update.message.voice
-    # Get the file ID of the voice message
-    file_id = voice_message.file_id
-    # Use the file ID to get the voice message file from Telegram
+    user_id = update.effective_user.id
+    chat_id = update.effective_message.chat_id
+
+    block_execution = block_by_request_count(update, context)
+    if block_execution:
+        return
+
+    send_waiting_message(context, chat_id)
+    typing_thread = TypingThread(context, chat_id)
+    typing_thread.start()
+
+    file_id = update.message.voice.file_id
     file = bot.get_file(file_id)
-    # Download the voice message file
     transcript_msg = generate_transcription(file)
 
     logger.info(f"Voice transcription: {transcript_msg}")
-    # bad_flag = is_bad_word(transcript_msg)
-    # if bad_flag:
-    #     bad_word_warning = get_random_bad_word_warning()
-    #     context.bot.send_message(
-    #         chat_id=update.message.chat_id,
-    #         text=bad_word_warning['bad_words_response'],
-    #         parse_mode=ParseMode.HTML,
-    #     )
-    # else:
-    run_search(update.message.chat_id, transcript_msg, context)
+
+    try:
+        search_result = run_search(update.message.chat_id, transcript_msg, context)
+        if search_result:
+            update_result = user_requests_dao.update_user_requests_count(user_id)
+            requests_count = update_result['requests_count']
+            logger.info(f"New request count for user {user_id}: {requests_count}")
+        else:
+            logger.info(f"Search process was rejected for user {user_id}")
+    finally:
+        typing_thread.stop()
 
 
-@send_typing_action(block_func=block_by_request_count, pre_func=send_waiting_message)
 def process_message(update, context):
     user_id = update.effective_user.id
-    search_result = run_search(update.message.chat_id, update.message.text, context)
-    if search_result:
-        update_result = user_requests_dao.update_user_requests_count(user_id)
-        requests_count = update_result['requests_count']
-        logger.info(f"Updated request count for user {user_id}: {requests_count}")
-    else:
-        logger.info(f"Search process was rejected for user {user_id}")
+    chat_id = update.effective_message.chat_id
+
+    block_execution = block_by_request_count(update, context)
+    if block_execution:
+        return
+
+    send_waiting_message(context, chat_id)
+    typing_thread = TypingThread(context, chat_id)
+    typing_thread.start()
+    try:
+        search_result = run_search(update.message.chat_id, update.message.text, context)
+        if search_result:
+            update_result = user_requests_dao.update_user_requests_count(user_id)
+            requests_count = update_result['requests_count']
+            logger.info(f"New request count for user {user_id}: {requests_count}")
+        else:
+            logger.info(f"Search process was rejected for user {user_id}")
+    finally:
+        typing_thread.stop()
 
 
 def run_search(chat_id, chat_text, context):
