@@ -17,7 +17,7 @@ from telegram import ParseMode, Update, Bot
 from chalicelib.api import search
 from chalicelib.classifier import ContentModerationSchema
 from chalicelib.dao import UserRequestsDao, UserAnalyticsDao
-from chalicelib.utils import generate_transcription, TypingThread
+from chalicelib.utils import generate_transcription, TypingThread, generate_random_image_url
 
 # Telegram token
 TOKEN = os.environ["TELEGRAM_TOKEN"]
@@ -193,11 +193,11 @@ def run_search(chat_id, chat_text, context):
         )
         return False
     else:
-        context.bot.send_message(
+        context.bot.send_photo(
             chat_id=chat_id,
-            text=message,
-            parse_mode=ParseMode.HTML,
-            disable_web_page_preview=True
+            photo=generate_random_image_url(),
+            caption=message,
+            parse_mode=ParseMode.HTML
         )
         return True
 

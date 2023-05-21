@@ -1,7 +1,9 @@
+import random
 import time
 import uuid
 import os
 import json
+
 import openai
 from functools import wraps
 
@@ -112,3 +114,25 @@ def google_translate(text: str, src: str, target: str):
 def generate_embedding(_text: str):
     response = openai.Embedding.create(model="text-embedding-ada-002", input=_text)
     return response["data"][0]["embedding"], response["usage"]["total_tokens"]
+
+
+def generate_random_image_url():
+    s3_client = boto3.client('s3')
+
+    image_objects = []
+
+    png_objects = [f'assets_photo/{i}.png' for i in range(1, 15)]
+    jpg_objects = [f'assets_photo/{i}.jpg' for i in range(15, 29)]
+
+    image_objects.extend(jpg_objects)
+    image_objects.extend(png_objects)
+
+    bucket_name = 'daniel-search-bot-serverless-v2'
+
+    random_image = random.choice(image_objects)
+
+    url = s3_client.generate_presigned_url('get_object',
+                                           Params={'Bucket': bucket_name,
+                                                   'Key': random_image},
+                                           ExpiresIn=3600)
+    return url
