@@ -14,7 +14,7 @@ class UserRequestsDao:
     def reset_user_requests_count(self, user_id):
         try:
             current_date = date.today()
-            current_date = current_date + timedelta(days=1)  # added for feature testing
+            # current_date = current_date + timedelta(days=1)  # added for feature testing
 
             current_date_iso_format = current_date.isoformat()
 
@@ -29,7 +29,7 @@ class UserRequestsDao:
     def get_user_requests_count(self, user_id):
         try:
             current_date = date.today()
-            current_date = current_date + timedelta(days=1)  # added for feature testing
+            # current_date = current_date + timedelta(days=1)  # added for feature testing
 
             current_date_iso_format = current_date.isoformat()
 
@@ -54,7 +54,7 @@ class UserRequestsDao:
     def update_user_requests_count(self, user_id):
         try:
             current_date = date.today()
-            current_date = current_date + timedelta(days=1)  # added for feature testing
+            # current_date = current_date + timedelta(days=1)  # added for feature testing
 
             current_date_iso_format = current_date.isoformat()
 
