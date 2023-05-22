@@ -84,7 +84,6 @@ def is_bad_word(text):
 
 
 def block_by_bad_words(update, context):
-    """Moderates message text"""
     res = is_bad_word(update.message.text)
     if res:
         bad_word_warning = get_random_bad_word_warning()
@@ -102,23 +101,41 @@ def get_random_request_limit_warning():
     return random.choice(data['responses'])
 
 
-def block_by_request_count(update, context):
-    """Moderates user request count"""
-    user_id = update.effective_user.id
+def interaction_allowed(user_id) -> bool:
     requests_count = user_requests_dao.get_user_requests_count(user_id)
-
     no_limits_ids = [435461305]
     max_request_count = 999 if user_id in no_limits_ids else 10
+    return requests_count < max_request_count
 
-    res = requests_count >= max_request_count
-    if res:
+
+def block_by_request_count(update, context) -> bool:
+    user_id = update.effective_user.id
+    block_user = not interaction_allowed(user_id)
+    if block_user:
         request_limit_warning = get_random_request_limit_warning()
         context.bot.send_message(
             chat_id=update.message.chat_id,
             text=request_limit_warning,
             parse_mode=ParseMode.HTML,
         )
-    return res
+    return block_user
+
+
+def get_random_next_question():
+    with open('chalicelib/ui/ui_next_question.json', 'r') as f:
+        data = json.load(f)
+    return random.choice(data['responses'])
+
+
+def send_next_message(update, context):
+    chat_id = update.effective_message.chat_id
+    user_id = update.effective_user.id
+    if interaction_allowed(user_id):
+        next_question = get_random_next_question()
+        context.bot.send_message(
+            chat_id=chat_id,
+            text=next_question
+        )
 
 
 def process_voice_message(update, context):
@@ -152,6 +169,8 @@ def process_voice_message(update, context):
     finally:
         typing_thread.stop()
 
+    send_next_message(update, context)
+
 
 def process_message(update, context):
     user_id = update.effective_user.id
@@ -176,6 +195,8 @@ def process_message(update, context):
             logger.info(f"Search process was rejected for user {user_id}")
     finally:
         typing_thread.stop()
+
+    send_next_message(update, context)
 
 
 def run_search(chat_id, chat_text, context):
