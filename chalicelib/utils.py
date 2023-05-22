@@ -3,15 +3,15 @@ import time
 import uuid
 import os
 import json
-
+import boto3
 import openai
-from functools import wraps
-
 import boto3
 import wget
+
 from loguru import logger
 from telegram import ChatAction
 from googletrans import Translator
+from functools import wraps
 
 from threading import Thread
 
@@ -136,3 +136,42 @@ def generate_random_image_url():
                                                    'Key': random_image},
                                            ExpiresIn=3600)
     return url
+
+
+def extend_session_duration():
+    sts_client = boto3.client('sts')
+
+    dynamo_db_admin_role_arn = "arn:aws:iam::377100718219:role/DynamoDbAdmin"
+    lambda_role_arn = "arn:aws:iam::377100718219:role/daniel-search-bot-serverless-v2-dev-message-handler-lambda"
+
+    # create an AWS STS (Security Token Service) client
+    response = sts_client.assume_role(
+        RoleArn=dynamo_db_admin_role_arn,
+        RoleSessionName='SessionExtension'
+    )
+
+    # extract the temporary credentials from the response
+    credentials = response['Credentials']
+
+    access_key = credentials['AccessKeyId']
+    secret_key = credentials['SecretAccessKey']
+    session_token = credentials['SessionToken']
+
+    # create a new AWS IAM client using the temporary credentials
+    iam_client = boto3.client(
+        'iam',
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken']
+    )
+
+    # update the role's maximum session duration
+    iam_client.update_role(
+        RoleName=lambda_role_arn.split('/')[-1],
+        MaxSessionDuration=43200  # new max duration in seconds
+    )
+
+    logger.info('Session role extended - SUCCESS')
+    logger.info('Max duration of DynamoDbAdmin role updated - SUCCESS')
+
+    return access_key, secret_key, session_token

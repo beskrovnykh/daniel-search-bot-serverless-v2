@@ -1,4 +1,4 @@
-import logging
+from loguru import logger
 from datetime import date, timedelta, datetime
 
 import boto3
@@ -37,7 +37,7 @@ class UserAnalyticsDao:
                 }
             )
         except ClientError as e:
-            print(e.response['Error']['Message'])
+            logger.info(e)
         else:
             return 'Item' in response
 
@@ -52,7 +52,7 @@ class UserAnalyticsDao:
                 }
             )
         except ClientError as e:
-            print(e.response['Error']['Message'])
+            logger.info(e)
 
     def update_last_seen(self, user_id):
         try:
@@ -67,7 +67,7 @@ class UserAnalyticsDao:
                 ReturnValues="UPDATED_NEW"
             )
         except ClientError as e:
-            print(e.response['Error']['Message'])
+            logger.error(e)
 
 
 class UserRequestsDao:
@@ -89,7 +89,7 @@ class UserRequestsDao:
                 ExpressionAttributeValues={':count': 0, ':date': current_date_iso_format}
             )
         except ClientError as e:
-            logging.info(f"Error resetting user requests count: {e.response['Error']['Message']}")
+            logger.error(f"Error resetting user requests count: {e}")
 
     def get_user_requests_count(self, user_id):
         try:
@@ -113,7 +113,7 @@ class UserRequestsDao:
             else:
                 return 0
         except ClientError as e:
-            logging.info(f"Error retrieving user requests count: {e.response['Error']['Message']}")
+            logger.info(f"Error retrieving user requests count: {e}")
             return 0
 
     def update_user_requests_count(self, user_id):
@@ -132,5 +132,5 @@ class UserRequestsDao:
             )
             return response.get('Attributes', {})
         except ClientError as e:
-            logging.info(f"Error updating user requests count: {e.response['Error']['Message']}")
+            logger.info(f"Error updating user requests count: {e}")
             return None
