@@ -90,7 +90,7 @@ def block_by_bad_words(update, context):
         context.bot.send_message(
             chat_id=update.message.chat_id,
             text=bad_word_warning['bad_words_response'],
-            parse_mode=ParseMode.HTML,
+            parse_mode=ParseMode.MARKDOWN,
         )
     return res
 
@@ -116,7 +116,7 @@ def block_by_request_count(update, context) -> bool:
         context.bot.send_message(
             chat_id=update.message.chat_id,
             text=request_limit_warning,
-            parse_mode=ParseMode.HTML,
+            parse_mode=ParseMode.MARKDOWN,
         )
     return block_user
 
@@ -209,7 +209,7 @@ def run_search(chat_id, chat_text, context):
         context.bot.send_message(
             chat_id=chat_id,
             text="Упс! Кажется, что-то пошло не так 😬 Но не волнуйтесь, наши кодовые мастера уже вовсю трудятся над исправлением проблемы! ⚙️",
-            parse_mode=ParseMode.HTML,
+            parse_mode=ParseMode.MARKDOWN,
             disable_web_page_preview=True
         )
         return False
@@ -218,7 +218,7 @@ def run_search(chat_id, chat_text, context):
             chat_id=chat_id,
             photo=generate_random_image_url(),
             caption=message,
-            parse_mode=ParseMode.HTML
+            parse_mode=ParseMode.MARKDOWN
         )
         return True
 
@@ -249,7 +249,7 @@ def greetings(context, update):
     context.bot.send_message(
         chat_id=update.message.chat_id,
         text=f"{greeting['greeting']}\n\n{greeting['description']}\n\n{greeting['prompt']}",
-        parse_mode=ParseMode.HTML,
+        parse_mode=ParseMode.MARKDOWN,
     )
 
 

@@ -118,9 +118,9 @@ def search(query):
 
     if len(results) > 0:
         answer = '{}\n\n'.format(get_random_response())
-        for count, result in enumerate(results, start=1):
-            answer += '{}) {}\n{}\n\n' \
-                .format(count, remove_capslock(result['title']), f'{result["url"]}')
+        for result in results:
+            answer += f'👉 [{remove_capslock(result["title"])}]({result["url"]})\n\n'
+
     else:
         answer = "Ой, кажется, я не смог найти точный ответ на ваш вопрос 🤔 " \
                  "Можете уточнить вопрос для более точного поиска? 🎯"
