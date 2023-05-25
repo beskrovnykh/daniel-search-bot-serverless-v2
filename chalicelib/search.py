@@ -1,4 +1,5 @@
 import concurrent.futures
+import json
 import logging
 import os
 
@@ -14,8 +15,30 @@ PINECONE_API_KEY = os.environ["PINECONE_API_KEY"]
 
 
 class TextSearch:
-    def __init__(self, index):
-        self.index = index
+    def __init__(self):
+        self.index = self.load_index()
+        self.titles = self.load_titles()
+
+    @staticmethod
+    def load_titles():
+        titles = {}
+        file_path = "chalicelib/cache/youtube_titles.json"
+        with open(file_path, 'r') as file:
+            data = json.load(file)
+            for entry in data:
+                meaning_id = entry.get('meaning_id')
+                translated_title = entry.get('translated_title')
+                if meaning_id and translated_title:
+                    titles[meaning_id] = translated_title
+        return titles
+
+    @staticmethod
+    def load_index():
+        index_name = 'daniel-index-v2'
+        pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENV)
+        index = pinecone.Index(index_name)
+        index.describe_index_stats()
+        return index
 
     def search_similar_meanings(self, query_embedding, max_meanings_count, filter_query):
         similar_meanings = self.index.query(query_embedding, namespace="meaning", top_k=max_meanings_count,
@@ -91,6 +114,11 @@ class TextSearch:
         execution_time = end_time - start_time
         logging.info(f"Execution time of the filter out duplication code: {execution_time} seconds")
 
+        for result in sorted_result:
+            meaning_id = result['meaning_id']
+            new_title = self.titles[meaning_id]
+            result['title'] = new_title
+
         return sorted_result
 
     @staticmethod
@@ -115,6 +143,7 @@ class TextSearch:
             if meaning_relevance is not None:
                 mapped_results.append({
                     'id': text['id'],
+                    'meaning_id': text['metadata']['meaning_id'],
                     'relevance': 0.4 * text_relevance + 0.6 * meaning_relevance,
                     'text_relevance': text_relevance,
                     'meaning_relevance': meaning_relevance,
@@ -128,55 +157,38 @@ class TextSearch:
         return sorted_result
 
 
-def remove_capslock(text):
-    if len(text) == 1:
-        return text
-    processed_words = []
-    for word in text.split():
-        if word[0].isupper() and any(c.islower() for c in word[1:]):
-            processed_words.append(word)
-        else:
-            processed_words.append(word.lower())
-    res = ' '.join(processed_words)
-    res = res[0].upper() + res[1:]
-    return res
+text_search = TextSearch()
 
 
 @measure_time
-def _search(query, top_k):
+def search(query):
+    def get_random_response():
+        return get_random_list_item('chalicelib/ui/ui_results.json')
+
+    def get_random_next_question():
+        return get_random_list_item('chalicelib/ui/ui_next_question.json')
+
+    logger.info(f"User query: {query}")
+
+    top_k = 3
     processed_query = google_translate(query, "ru", "en")
 
     logger.info(f"Embedding model Open AI is used for search")
     query_embedding, tokens_count = generate_embedding(processed_query)
     logger.info(f"Number of tokens to build an embedding for a user query: {tokens_count}")
 
-    index_name = 'daniel-index-v2'
-    # initialize connection to pinecone (get API key at app.pinecone.io)
-    pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENV)
-    # connect to index
-    index = pinecone.Index(index_name)
-    # view index stats
-    index.describe_index_stats()
+    results = text_search.search(query_embedding, top_k)
+    next_question = get_random_next_question()
 
-    text_search = TextSearch(index)
-    top_results = text_search.search(query_embedding, top_k)
-
-    return top_results
-
-
-def get_random_response():
-    return get_random_list_item('chalicelib/ui/ui_results.json')
-
-
-def search(query):
-    logger.info(f"User query: {query}")
-    results = _search(query, 5)
     logger.info(f"Results: {len(results)}")
 
     if len(results) > 0:
+        logger.info(f"Top result: text relevance {results[0]['text_relevance']}, "
+                    f"meaning relevance {results[0]['meaning_relevance']}")
         answer = '{}\n\n'.format(get_random_response())
         for result in results:
-            answer += f'👉 [{remove_capslock(result["title"])}]({result["url"]})\n\n'
+            answer += f'👉 [{result["title"]}]({result["url"]})\n\n'
+        answer += next_question
 
     else:
         answer = "Ой, кажется, я не смог найти точный ответ на ваш вопрос 🤔 " \

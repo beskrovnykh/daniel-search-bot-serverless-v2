@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch
-from chalicelib.api import search
+from chalicelib.search import search
 
 
 class TestSearch(unittest.TestCase):
