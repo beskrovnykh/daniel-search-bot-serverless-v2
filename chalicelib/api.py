@@ -1,10 +1,11 @@
-import json
+import concurrent.futures
+import logging
 import os
-import random
 
 import pinecone
+import time
 
-from chalicelib.utils import google_translate, generate_embedding
+from chalicelib.utils import google_translate, generate_embedding, get_random_list_item, get_list, measure_time
 from loguru import logger
 
 # Telegram token
@@ -16,25 +17,81 @@ class TextSearch:
     def __init__(self, index):
         self.index = index
 
+    def search_similar_meanings(self, query_embedding, max_meanings_count, filter_query):
+        similar_meanings = self.index.query(query_embedding, namespace="meaning", top_k=max_meanings_count,
+                                            include_metadata=False, filter=filter_query)
+        return similar_meanings
+
+    def search_similar_meanings_parallel(self, query_embedding, max_meanings_count, max_threads=10):
+
+        def search_similar_meanings(index, query_embedding, max_meanings_count, filter_query):
+            return index.query(query_embedding, namespace="meaning", top_k=max_meanings_count,
+                               include_metadata=False, filter=filter_query)
+
+        playlist_ids = get_list('chalicelib/cache/youtube_playlists.json')
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
+            futures = []
+            for playlist_id in playlist_ids:
+                future = executor.submit(search_similar_meanings,
+                                         index=self.index,
+                                         query_embedding=query_embedding,
+                                         max_meanings_count=max_meanings_count / max_threads,
+                                         filter_query={
+                                             "playlist_id": {"$eq": playlist_id}
+                                         })
+                futures.append(future)
+
+            meanings = []
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                if 'matches' in result:
+                    meanings.extend(result['matches'])
+
+        return {'matches': meanings}
+
     def search(self, query_embedding, top_k=5):
         # number of top text to be retrieved from database
         top_texts_count = 20
         # assumed to be less than that
-        max_meanings_count = 2000
+        max_meanings_count = 1600
+
+        start_time = time.time()
         similar_texts = self.index.query(query_embedding, namespace="text", top_k=top_texts_count,
                                          include_metadata=True)
+
+        end_time = time.time()
+        execution_time = end_time - start_time
+        logger.info(f"Execution time of the similar_texts query: {execution_time} seconds")
+
+        start_time = time.time()
         similar_meanings = self.index.query(query_embedding, namespace="meaning", top_k=max_meanings_count,
-                                            include_metadata=True)
+                                            include_metadata=False)
+        # similar_meanings = self.search_similar_meanings_parallel(query_embedding=query_embedding,
+        #                                                          max_meanings_count=max_meanings_count)
+        end_time = time.time()
+        execution_time = end_time - start_time
+        logging.info(f"Execution time of the similar_meanings query: {execution_time} seconds")
 
+        start_time = time.time()
         ordered_texts = self.order_by_joint_relevance(similar_texts, similar_meanings)
+        end_time = time.time()
+        execution_time = end_time - start_time
+        logger.info(f"order_by_joint_relevance execution time: {execution_time} seconds")
 
+        start_time = time.time()
         top_texts = {}
         for text in ordered_texts:
             video_id = text['id'].split('-')[0]
             if video_id not in top_texts or text['relevance'] > top_texts[video_id]['relevance']:
                 top_texts[video_id] = text
 
-        return sorted(top_texts.values(), key=lambda x: x['relevance'], reverse=True)[:top_k]
+        sorted_result = sorted(top_texts.values(), key=lambda x: x['relevance'], reverse=True)[:top_k]
+        end_time = time.time()
+        execution_time = end_time - start_time
+        logging.info(f"Execution time of the filter out duplication code: {execution_time} seconds")
+
+        return sorted_result
 
     @staticmethod
     def _compute_text_score(text, similar_meanings):
@@ -67,7 +124,8 @@ class TextSearch:
                     'title': text['metadata']['title'],
                     'published': str(text['metadata']['published'])
                 })
-        return sorted(mapped_results, key=lambda t: t['relevance'], reverse=True)
+        sorted_result = sorted(mapped_results, key=lambda t: t['relevance'], reverse=True)
+        return sorted_result
 
 
 def remove_capslock(text):
@@ -84,6 +142,7 @@ def remove_capslock(text):
     return res
 
 
+@measure_time
 def _search(query, top_k):
     processed_query = google_translate(query, "ru", "en")
 
@@ -106,9 +165,7 @@ def _search(query, top_k):
 
 
 def get_random_response():
-    with open('chalicelib/ui/ui_results.json', 'r', encoding='utf-8') as f:
-        responses = json.load(f)["responses"]
-    return random.choice(responses)
+    return get_random_list_item('chalicelib/ui/ui_results.json')
 
 
 def search(query):

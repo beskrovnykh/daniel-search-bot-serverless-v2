@@ -6,9 +6,13 @@
             "Action": [
                 "logs:CreateLogGroup",
                 "logs:CreateLogStream",
-                "logs:PutLogEvents"
+                "logs:PutLogEvents",
+                "cloudwatch:PutMetricData"
             ],
-            "Resource": "arn:*:logs:*:*:*"
+            "Resource": [
+                "arn:*:logs:*:*:*",
+                "arn:*:cloudwatch:*:*:*"
+            ]
         },
         {
             "Effect": "Allow",
@@ -20,6 +24,7 @@
             "Resource": "*"
         },
         {
+            "Effect": "Allow",
             "Action": [
                 "dynamodb:PutItem",
                 "dynamodb:DeleteItem",
@@ -30,8 +35,7 @@
                 "sts:AssumeRole",
                 "iam:UpdateRole"
             ],
-            "Resource": ["arn:aws:iam::377100718219:role/DynamoDbAdmin"],
-            "Effect": "Allow"
+            "Resource": ["arn:aws:iam::377100718219:role/DynamoDbAdmin"]
         }
     ]
 }

@@ -175,3 +175,25 @@ def extend_session_duration():
     logger.info('Max duration of DynamoDbAdmin role updated - SUCCESS')
 
     return access_key, secret_key, session_token
+
+
+def measure_time(func):
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        execution_time = end_time - start_time
+        print(f"Execution time of the function {func.__name__}: {execution_time} sec")
+        return result
+
+    return wrapper
+
+
+def get_random_list_item(file_path):
+    return random.choice(get_list(file_path))
+
+
+def get_list(file_path):
+    with open(file_path, 'r') as f:
+        content = json.load(f)
+    return content['responses']

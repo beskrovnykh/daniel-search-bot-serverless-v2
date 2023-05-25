@@ -7,7 +7,8 @@
     "OPENAI_API_KEY": "",
     "VOICE_MESSAGES_BUCKET": "",
     "PINECONE_API_KEY" : "",
-    "PINECONE_ENV" : ""
+    "PINECONE_ENV" : "",
+    "SERVICE_AVAILABLE" : "true"
   },
   "lambda_timeout": 600,
   "stages": {
@@ -16,7 +17,8 @@
       "autogen_policy": false,
       "iam_policy_file": "dev-policy.json",
       "environment_variables": {
-        "STAGE": "local"
+        "STAGE": "local",
+        "SERVICE_AVAILABLE": "${SERVICE_AVAILABLE}"
       }
     },
     "dev": {
@@ -24,7 +26,8 @@
       "autogen_policy": false,
       "iam_policy_file": "dev-policy.json",
       "environment_variables": {
-        "STAGE": "dev"
+        "STAGE": "dev",
+        "SERVICE_AVAILABLE": "${SERVICE_AVAILABLE}"
       }
     }
   }

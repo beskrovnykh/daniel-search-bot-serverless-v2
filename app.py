@@ -1,13 +1,10 @@
 import os
 import json
 import traceback
-import random
 
 from enum import Enum
-
 from loguru import logger
 from chalice import Chalice
-
 from telegram.ext import (
     Dispatcher,
     MessageHandler,
@@ -17,7 +14,8 @@ from telegram import ParseMode, Update, Bot
 from chalicelib.api import search
 from chalicelib.classifier import ContentModerationSchema
 from chalicelib.dao import UserRequestsDao, UserAnalyticsDao
-from chalicelib.utils import generate_transcription, TypingThread, generate_random_image_url, extend_session_duration
+from chalicelib.utils import generate_transcription, TypingThread, generate_random_image_url, extend_session_duration, \
+    get_random_list_item
 
 # Telegram token
 TOKEN = os.environ["TELEGRAM_TOKEN"]
@@ -42,7 +40,8 @@ class Stage(Enum):
     PROD = 'prod'
 
 
-STAGE = Stage(os.environ['STAGE'])
+STAGE = Stage(os.environ["STAGE"])
+SERVICE_AVAILABLE = os.environ["SERVICE_AVAILABLE"]
 
 user_requests_dao = UserRequestsDao()
 user_analytics_dao = UserAnalyticsDao()
@@ -53,9 +52,7 @@ user_analytics_dao = UserAnalyticsDao()
 #####################
 
 def get_random_waiting_text():
-    with open('chalicelib/ui/ui_searching.json', 'r') as f:
-        data = json.load(f)
-    return random.choice(data['responses'])
+    return get_random_list_item('chalicelib/ui/ui_searching.json')
 
 
 def send_waiting_message(context, chat_id):
@@ -67,9 +64,7 @@ def send_waiting_message(context, chat_id):
 
 
 def get_random_bad_word_warning():
-    with open('chalicelib/ui/ui_badwords.json', 'r') as f:
-        badwords = json.load(f)
-    return random.choice(badwords)
+    return get_random_list_item('chalicelib/ui/ui_badwords.json')
 
 
 def is_bad_word(text):
@@ -96,9 +91,7 @@ def block_by_bad_words(update, context):
 
 
 def get_random_request_limit_warning():
-    with open('chalicelib/ui/ui_limit_reached.json', 'r') as f:
-        data = json.load(f)
-    return random.choice(data['responses'])
+    return get_random_list_item('chalicelib/ui/ui_limit_reached.json')
 
 
 def interaction_allowed(user_id) -> bool:
@@ -122,9 +115,7 @@ def block_by_request_count(update, context) -> bool:
 
 
 def get_random_next_question():
-    with open('chalicelib/ui/ui_next_question.json', 'r') as f:
-        data = json.load(f)
-    return random.choice(data['responses'])
+    return get_random_list_item('chalicelib/ui/ui_next_question.json')
 
 
 def send_next_message(update, context):
@@ -206,12 +197,7 @@ def run_search(chat_id, chat_text, context):
     except Exception as e:
         app.log.error(e)
         app.log.error(traceback.format_exc())
-        context.bot.send_message(
-            chat_id=chat_id,
-            text="Упс! Кажется, что-то пошло не так 😬 Но не волнуйтесь, наши кодовые мастера уже вовсю трудятся над исправлением проблемы! ⚙️",
-            parse_mode=ParseMode.MARKDOWN,
-            disable_web_page_preview=True
-        )
+        send_service_unavailable_message(chat_id, context)
         return False
     else:
         context.bot.send_photo(
@@ -223,14 +209,21 @@ def run_search(chat_id, chat_text, context):
         return True
 
 
+def send_service_unavailable_message(chat_id, context):
+    context.bot.send_message(
+        chat_id=chat_id,
+        text="Упс! Кажется, что-то пошло не так 😬 Но не волнуйтесь, наши кодовые мастера уже вовсю трудятся над исправлением проблемы! ⚙️",
+        parse_mode=ParseMode.MARKDOWN,
+        disable_web_page_preview=True
+    )
+
+
 #####################
 # Commands #
 #####################
 
 def get_random_greeting():
-    with open('chalicelib/ui/ui_greetings.json', 'r') as f:
-        greetings = json.load(f)
-    return random.choice(greetings)
+    return get_random_list_item('chalicelib/ui/ui_greetings.json')
 
 
 def start_command(update, context):
@@ -266,10 +259,19 @@ def help_command(update, context):
 
 @app.lambda_function(name=MESSAGE_HANDLER_LAMBDA)
 def message_handler(event, context):
+    is_service_available = SERVICE_AVAILABLE.lower() == "true"
     dispatcher.add_handler(CommandHandler("start", start_command))
     dispatcher.add_handler(CommandHandler("help", help_command))
-    dispatcher.add_handler(MessageHandler(Filters.text, process_message))
-    dispatcher.add_handler(MessageHandler(Filters.voice, process_voice_message))
+
+    def service_unavailable_message(update, _context):
+        return send_service_unavailable_message(update.message.chat_id, _context)
+
+    if is_service_available:
+        dispatcher.add_handler(MessageHandler(Filters.text, process_message))
+        dispatcher.add_handler(MessageHandler(Filters.voice, process_voice_message))
+    else:
+        dispatcher.add_handler(MessageHandler(Filters.text, service_unavailable_message))
+        dispatcher.add_handler(MessageHandler(Filters.voice, service_unavailable_message))
 
     try:
         dispatcher.process_update(Update.de_json(json.loads(event["body"]), bot))
