@@ -115,17 +115,6 @@ def block_by_request_count(update, context) -> bool:
     return block_user
 
 
-# def send_next_message(update, context):
-#     chat_id = update.effective_message.chat_id
-#     user_id = update.effective_user.id
-#     if interaction_allowed(user_id):
-#         next_question = get_random_next_question()
-#         context.bot.send_message(
-#             chat_id=chat_id,
-#             text=next_question
-#         )
-
-
 def process_voice_message(update, context):
     user_id = update.effective_user.id
     chat_id = update.effective_message.chat_id
@@ -156,8 +145,6 @@ def process_voice_message(update, context):
             logger.info(f"Search process was rejected for user {user_id}")
     finally:
         typing_thread.stop()
-
-    # send_next_message(update, context)
 
 
 def process_message(update, context):
