@@ -2,12 +2,12 @@ import concurrent.futures
 import json
 import logging
 import os
-
-import pinecone
 import time
 
-from chalicelib.utils import google_translate, generate_embedding, get_random_list_item, get_list, measure_time
+import pinecone
 from loguru import logger
+
+from chalicelib.utils import google_translate, generate_embedding, get_random_list_item, get_list, measure_time
 
 # Telegram token
 PINECONE_ENV = os.environ["PINECONE_ENV"]
@@ -77,7 +77,7 @@ class TextSearch:
         # number of top text to be retrieved from database
         top_texts_count = 20
         # assumed to be less than that
-        max_meanings_count = 1600
+        max_meanings_count = 1300
 
         start_time = time.time()
         similar_texts = self.index.query(query_embedding, namespace="text", top_k=top_texts_count,

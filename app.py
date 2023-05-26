@@ -194,7 +194,7 @@ def run_search(chat_id, chat_text, context):
 def send_service_unavailable_message(chat_id, context):
     context.bot.send_message(
         chat_id=chat_id,
-        text="Упс! Кажется, что-то пошло не так 😬 Но не волнуйтесь, наши кодовые мастера уже вовсю трудятся над исправлением проблемы! ⚙️",
+        text="Упс! Кажется, что-то пошло не так 😬 Но не волнуйтесь, наши кодовые мастера уже вовсю трудятся над исправлением проблемы! Повторите попытку позднее ⚙️",
         parse_mode=ParseMode.MARKDOWN,
         disable_web_page_preview=True
     )
@@ -250,10 +250,10 @@ def message_handler(event, context):
 
     if is_service_available:
         dispatcher.add_handler(MessageHandler(Filters.text, process_message))
-        dispatcher.add_handler(MessageHandler(Filters.voice, process_voice_message))
+        # dispatcher.add_handler(MessageHandler(Filters.voice, process_voice_message))
     else:
         dispatcher.add_handler(MessageHandler(Filters.text, service_unavailable_message))
-        dispatcher.add_handler(MessageHandler(Filters.voice, service_unavailable_message))
+        # dispatcher.add_handler(MessageHandler(Filters.voice, service_unavailable_message))
 
     try:
         dispatcher.process_update(Update.de_json(json.loads(event["body"]), bot))
