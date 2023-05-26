@@ -19,23 +19,10 @@
             "Action": [
                 "lambda:UpdateFunctionConfiguration",
                 "transcribe:*",
+                "dynamodb:*",
                 "s3:*"
             ],
             "Resource": "*"
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "dynamodb:PutItem",
-                "dynamodb:DeleteItem",
-                "dynamodb:UpdateItem",
-                "dynamodb:GetItem",
-                "dynamodb:Scan",
-                "dynamodb:Query",
-                "sts:AssumeRole",
-                "iam:UpdateRole"
-            ],
-            "Resource": ["arn:aws:iam::377100718219:role/DynamoDbAdmin"]
         }
     ]
 }

@@ -1,20 +1,21 @@
-import os
 import json
+import os
 import traceback
-
 from enum import Enum
-from loguru import logger
+
 from chalice import Chalice
+from loguru import logger
+from telegram import ParseMode, Update, Bot
 from telegram.ext import (
     Dispatcher,
     MessageHandler,
     Filters, CommandHandler,
 )
-from telegram import ParseMode, Update, Bot
-from chalicelib.search import search
+
 from chalicelib.classifier import ContentModerationSchema
 from chalicelib.dao import UserRequestsDao, UserAnalyticsDao
-from chalicelib.utils import generate_transcription, TypingThread, generate_random_image_url, extend_session_duration, \
+from chalicelib.search import search
+from chalicelib.utils import generate_transcription, TypingThread, generate_random_image_url, \
     get_random_list_item
 
 # Telegram token
@@ -301,9 +302,3 @@ def analytics():
         'active_users': active_users,
         'total_users': total_users
     }
-
-
-@app.route('/extend-session', methods=['POST'])
-def extend_session():
-    extend_session_duration()
-    return {'message': 'session extension successful.'}
