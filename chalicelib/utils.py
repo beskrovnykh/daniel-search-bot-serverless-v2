@@ -1,17 +1,16 @@
+import json
+import os
 import random
 import time
 import uuid
-import os
-import json
-import openai
-import boto3
-import wget
+from threading import Thread
 
+import boto3
+import openai
+import wget
+from googletrans import Translator
 from loguru import logger
 from telegram import ChatAction
-from googletrans import Translator
-
-from threading import Thread
 
 
 class TypingThread(Thread):
@@ -126,3 +125,18 @@ def get_list(file_path):
     with open(file_path, 'r') as f:
         content = json.load(f)
     return content['responses']
+
+
+def extract_video_id(youtube_link):
+    # regular expressions to match the different syntax of YouTube links
+    patterns = [r"^https?://(?:www\.)?youtube\.com/watch\?v=([\w-]+)",
+                r"^https?://(?:www\.)?youtube\.com/embed/([\w-]+)",
+                r"^https?://youtu\.be/([\w-]+)"]
+
+    for pattern in patterns:
+        import re
+        match = re.search(pattern, youtube_link)
+        if match:
+            return match.group(1)
+
+    return None

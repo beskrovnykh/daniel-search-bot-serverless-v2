@@ -1,5 +1,5 @@
 import concurrent.futures
-import json
+import csv
 import logging
 import os
 import time
@@ -7,7 +7,8 @@ import time
 import pinecone
 from loguru import logger
 
-from chalicelib.utils import google_translate, generate_embedding, get_random_list_item, get_list, measure_time
+from chalicelib.utils import google_translate, generate_embedding, get_random_list_item, get_list, measure_time, \
+    extract_video_id
 
 # Telegram token
 PINECONE_ENV = os.environ["PINECONE_ENV"]
@@ -21,16 +22,16 @@ class TextSearch:
 
     @staticmethod
     def load_titles():
-        titles = {}
-        file_path = "chalicelib/cache/youtube_titles.json"
-        with open(file_path, 'r') as file:
-            data = json.load(file)
-            for entry in data:
-                meaning_id = entry.get('meaning_id')
-                translated_title = entry.get('translated_title')
-                if meaning_id and translated_title:
-                    titles[meaning_id] = translated_title
-        return titles
+        video_data = {}
+        file_path = "chalicelib/cache/youtube_titles.csv"
+        with open(file_path, 'r') as csv_file:
+            reader = csv.DictReader(csv_file)
+            for row in reader:
+                video_link = row['Ссылка на видео в YouTube']
+                subtitle = row['Подзаголовок']
+                video_data[extract_video_id(video_link)] = subtitle
+
+        return video_data
 
     @staticmethod
     def load_index():
@@ -114,11 +115,6 @@ class TextSearch:
         execution_time = end_time - start_time
         logging.info(f"Execution time of the filter out duplication code: {execution_time} seconds")
 
-        for result in sorted_result:
-            meaning_id = result['meaning_id']
-            new_title = self.titles[meaning_id]
-            result['title'] = new_title
-
         return sorted_result
 
     @staticmethod
@@ -136,23 +132,28 @@ class TextSearch:
             return None
 
     def order_by_joint_relevance(self, texts, meanings):
+        import re
         mapped_results = []
         for text in texts['matches']:
             text_relevance = text['score']
             meaning_relevance = self._compute_text_score(text, meanings)
             if meaning_relevance is not None:
+                meaning_id = text['metadata']['meaning_id']
+                video_id = re.match(r"(.*?)-t", meaning_id).group(1) if re.match(r"(.*?)-t", meaning_id) else None
                 mapped_results.append({
                     'id': text['id'],
-                    'meaning_id': text['metadata']['meaning_id'],
+                    'meaning_id': meaning_id,
                     'relevance': 0.4 * text_relevance + 0.6 * meaning_relevance,
                     'text_relevance': text_relevance,
                     'meaning_relevance': meaning_relevance,
                     'text': text['metadata']['text'],
                     'url': f"{text['metadata']['url']}&t={int(text['metadata']['start'])}",
                     'start': text['metadata']['start'],
-                    'title': text['metadata']['title'],
+                    'title': self.titles[video_id],
                     'published': str(text['metadata']['published'])
                 })
+            else:
+                logger.warning(f"Meaning relevance is not defined {text['id']}")
         sorted_result = sorted(mapped_results, key=lambda t: t['relevance'], reverse=True)
         return sorted_result
 
@@ -187,7 +188,7 @@ def search(query):
                     f"meaning relevance {results[0]['meaning_relevance']}")
         answer = '{}\n\n'.format(get_random_response())
         for result in results:
-            answer += f'👉 [{result["title"]}]({result["url"]})\n\n'
+            answer += f'👉 Из сатсанга ["{result["title"]}"]({result["url"]})\n\n'
         answer += next_question
 
     else:
