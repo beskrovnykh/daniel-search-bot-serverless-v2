@@ -131,6 +131,14 @@ class TextSearch:
 
             return None
 
+    def generate_title(self, video_id, metadata):
+        title = ""
+        if metadata:
+            title = metadata["title"].replace("- Даниил Зуев расскажет", "")
+        if self.titles.get(video_id):
+            title = self.titles[video_id]
+        return title
+
     def order_by_joint_relevance(self, texts, meanings):
         import re
         mapped_results = []
@@ -149,7 +157,7 @@ class TextSearch:
                     'text': text['metadata']['text'],
                     'url': f"{text['metadata']['url']}&t={int(text['metadata']['start'])}",
                     'start': text['metadata']['start'],
-                    'title': self.titles[video_id],
+                    'title': self.generate_title(video_id, text['metadata']),
                     'published': str(text['metadata']['published'])
                 })
             else:
