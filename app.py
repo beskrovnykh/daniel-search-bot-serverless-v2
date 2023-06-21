@@ -99,7 +99,8 @@ def get_random_request_limit_warning():
 def interaction_allowed(user_id) -> bool:
     requests_count = user_requests_dao.get_user_requests_count(user_id)
     no_limits_ids = [435461305]
-    max_request_count = 999 if user_id in no_limits_ids else 10
+    max_user_requests_per_day = 5
+    max_request_count = 999 if user_id in no_limits_ids else max_user_requests_per_day
     return requests_count < max_request_count
 
 
