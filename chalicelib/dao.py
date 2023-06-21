@@ -1,15 +1,29 @@
-from loguru import logger
 from datetime import date, timedelta, datetime
 
 import boto3
 from botocore.exceptions import ClientError
 from dateutil.parser import parse
+from loguru import logger
 
 
 class UserAnalyticsDao:
     def __init__(self):
         self.dynamodb = boto3.resource('dynamodb')
         self.table = self.dynamodb.Table("user_analytics")
+
+    def get_all_active_users(self, days):
+        now = datetime.now()
+        cutoff = now - timedelta(days=days)
+        try:
+            response = self.table.scan()  # todo: slow
+            items = []
+            for item in response['Items']:
+                last_seen = parse(item['last_seen'])
+                if last_seen > cutoff:
+                    items.append(int(item['user_id']))
+            return items
+        except ClientError as e:
+            logger.error(e)
 
     def get_active_users_count(self, days=30):
         now = datetime.now()
@@ -37,7 +51,7 @@ class UserAnalyticsDao:
                 }
             )
         except ClientError as e:
-            logger.info(e)
+            logger.error(e)
         else:
             return 'Item' in response
 

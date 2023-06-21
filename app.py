@@ -3,7 +3,7 @@ import os
 import traceback
 from enum import Enum
 
-from chalice import Chalice
+from chalice import Chalice, Response
 from loguru import logger
 from telegram import ParseMode, Update, Bot
 from telegram.ext import (
@@ -26,6 +26,7 @@ OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
 APP_NAME = "daniel-search-bot-serverless-v2"
 MESSAGE_HANDLER_LAMBDA = "message-handler-lambda"
+WAKEUP_MESSAGE_HANDLER_LAMBDA = "send-wakeup-message-lambda"
 
 app = Chalice(app_name=APP_NAME)
 app.debug = True
@@ -238,6 +239,20 @@ def help_command(update, context):
 # Lambda Handler functions #
 ############################
 
+@app.lambda_function(name=WAKEUP_MESSAGE_HANDLER_LAMBDA)
+def wakeup(event, context):
+    def get_random_wakeup_message():
+        return get_random_list_item('chalicelib/ui/ui_wakeup.json')
+
+    active_user_ids = user_analytics_dao.get_all_active_users(7)
+    random_wakeup = get_random_wakeup_message()
+
+    for user_id in active_user_ids:
+        logger.info(f"Sending random wakeup for user {user_id}")
+        bot.send_message(chat_id=user_id, text=random_wakeup)
+
+    return Response(body='Message sent successfully', status_code=200)
+
 
 @app.lambda_function(name=MESSAGE_HANDLER_LAMBDA)
 def message_handler(event, context):
@@ -275,17 +290,17 @@ if STAGE == Stage.LOCAL:
         return message_handler(response, None)
 
 
-@app.route('/analytics', methods=['GET'])
-def analytics():
-    query_params = app.current_request.query_params
-    days = 30
-    if query_params is not None and 'days' in query_params:
-        days = int(query_params.get('days'))
+    @app.route('/analytics', methods=['GET'])
+    def analytics():
+        query_params = app.current_request.query_params
+        days = 30
+        if query_params is not None and 'days' in query_params:
+            days = int(query_params.get('days'))
 
-    active_users = user_analytics_dao.get_active_users_count(days)
-    total_users = user_analytics_dao.get_total_users_count()
+        active_users = user_analytics_dao.get_active_users_count(days)
+        total_users = user_analytics_dao.get_total_users_count()
 
-    return {
-        'active_users': active_users,
-        'total_users': total_users
-    }
+        return {
+            'active_users': active_users,
+            'total_users': total_users
+        }

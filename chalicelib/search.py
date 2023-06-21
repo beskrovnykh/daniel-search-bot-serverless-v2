@@ -13,6 +13,8 @@ from chalicelib.utils import google_translate, generate_embedding, get_random_li
 # Telegram token
 PINECONE_ENV = os.environ["PINECONE_ENV"]
 PINECONE_API_KEY = os.environ["PINECONE_API_KEY"]
+INDEX_NAME = os.environ["INDEX_NAME"]
+
 
 
 class TextSearch:
@@ -35,9 +37,8 @@ class TextSearch:
 
     @staticmethod
     def load_index():
-        index_name = 'daniel-index-v2'
         pinecone.init(api_key=PINECONE_API_KEY, environment=PINECONE_ENV)
-        index = pinecone.Index(index_name)
+        index = pinecone.Index(INDEX_NAME)
         index.describe_index_stats()
         return index
 
@@ -78,7 +79,7 @@ class TextSearch:
         # number of top text to be retrieved from database
         top_texts_count = 20
         # assumed to be less than that
-        max_meanings_count = 1300
+        max_meanings_count = 1600
 
         start_time = time.time()
         similar_texts = self.index.query(query_embedding, namespace="text", top_k=top_texts_count,
